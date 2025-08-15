@@ -209,26 +209,42 @@ jobs:
     - name: Generate email body file
       if: always()
       run: |
-        cat > email_body.txt << 'EMAIL_EOF'
-        # Ansible Mention Monitoring Report
-        **Date**: $(date '+%Y-%m-%d %H:%M UTC')
-        **Monitoring Period**: Last 24 hours
+        # Generate email body with proper shell execution
+        echo "# Ansible Mention Monitoring Report" > email_body.txt
+        echo "**Date**: $(date '+%Y-%m-%d %H:%M UTC')" >> email_body.txt
+        echo "**Monitoring Period**: Last 24 hours" >> email_body.txt
+        echo "" >> email_body.txt
         
-        $(cat email_summary.txt)
+        # Add summary content if it exists
+        if [ -f email_summary.txt ]; then
+          cat email_summary.txt >> email_body.txt
+        else
+          echo "## ✅ Summary" >> email_body.txt
+          echo "No mention data available for this monitoring period." >> email_body.txt
+        fi
         
-        $(cat email_top_mentions.txt)
+        echo "" >> email_body.txt
         
-        ## 📁 Download Full Results
-        [View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        # Add top mentions content if it exists
+        if [ -f email_top_mentions.txt ]; then
+          cat email_top_mentions.txt >> email_body.txt
+        fi
         
-        **Available Files:**
-        - `mentions_*.json` - Complete mention data with metadata
-        - `mentions_*.csv` - Spreadsheet format for easy analysis
-        - `mention_bot.log` - Detailed execution logs
+        echo "" >> email_body.txt
+        echo "## 📁 Download Full Results" >> email_body.txt
+        echo "[View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> email_body.txt
+        echo "" >> email_body.txt
+        echo "**Available Files:**" >> email_body.txt
+        echo "- \`mentions_*.json\` - Complete mention data with metadata" >> email_body.txt
+        echo "- \`mentions_*.csv\` - Spreadsheet format for easy analysis" >> email_body.txt
+        echo "- \`mention_bot.log\` - Detailed execution logs" >> email_body.txt
+        echo "" >> email_body.txt
+        echo "---" >> email_body.txt
+        echo "*Automated report from ansible-mention-bot | Run #${{ github.run_number }}*" >> email_body.txt
         
-        ---
-        *Automated report from ansible-mention-bot | Run #${{ github.run_number }}*
-        EMAIL_EOF
+        # Debug: show what we generated
+        echo "Generated email body:"
+        cat email_body.txt
         
     - name: Send email notification
       if: always()  # Send email regardless of sentiment results
