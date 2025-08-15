@@ -62,36 +62,6 @@ jobs:
           mention_bot.log
         retention-days: 30
         
-    - name: Send email notification
-      if: always()  # Send email regardless of sentiment results
-      uses: dawidd6/action-send-mail@v3
-      env:
-        MENTIONS_DATA: ${{ steps.process-data.outputs.email-content }}
-      with:
-        server_address: smtp.gmail.com
-        server_port: 587
-        username: ${{ secrets.EMAIL_USERNAME }}
-        password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: 📊 Ansible Daily Report - ${{ github.run_number }}
-        to: ${{ secrets.EMAIL_TO }}
-        from: Ansible Mention Bot <${{ secrets.EMAIL_USERNAME }}>
-        body: |
-          # Ansible Mention Monitoring Report
-          **Date**: $(date '+%Y-%m-%d')
-          **Run**: ${{ github.run_number }}
-          
-          ## 📁 Download Results
-          [View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          The monitoring has completed successfully. Download the artifacts above to see:
-          - mentions_*.json - Complete mention data
-          - mentions_*.csv - Spreadsheet format  
-          - mention_bot.log - Execution logs
-          
-          ---
-          *Automated report from ansible-mention-bot*
-        convert_markdown: true
-        
     - name: Check for negative sentiment spike
       env:
         REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
@@ -156,3 +126,107 @@ jobs:
             body: body,
             labels: ['alert', 'negative-sentiment']
           });
+          
+    - name: Generate email content
+      id: email-content
+      if: always()  # Run regardless of sentiment results
+      run: |
+        python3 << 'EOF'
+        import json
+        import glob
+        import os
+        from datetime import datetime
+        
+        # Find the mentions file
+        mention_files = glob.glob('mentions_*.json')
+        
+        if not mention_files:
+            print("No mention data found")
+            subject = "📊 Ansible Daily Report - No Data"
+            summary = "No mentions found in the last 24 hours."
+            top_mentions = ""
+        else:
+            with open(mention_files[0], 'r') as f:
+                mentions = json.load(f)
+            
+            total = len(mentions)
+            positive = sum(1 for m in mentions if m.get('sentiment_label') == 'positive')
+            negative = sum(1 for m in mentions if m.get('sentiment_label') == 'negative')
+            neutral = total - positive - negative
+            
+            # Calculate percentages
+            pos_pct = (positive / total * 100) if total > 0 else 0
+            neg_pct = (negative / total * 100) if total > 0 else 0
+            
+            # Get platform breakdown
+            reddit_count = sum(1 for m in mentions if m.get('platform') == 'reddit')
+            twitter_count = sum(1 for m in mentions if m.get('platform') == 'twitter')
+            
+            # Get top mentions
+            top_mentions_data = sorted(mentions, key=lambda x: x.get('score', 0), reverse=True)[:5]
+            
+            # Determine email type
+            if neg_pct > 40 or negative > 10:
+                subject = f"🚨 Ansible Alert: High Negative Sentiment ({negative} negative mentions)"
+                alert_emoji = "🚨"
+            else:
+                subject = f"📊 Ansible Daily Report: {total} mentions ({pos_pct:.1f}% positive)"
+                alert_emoji = "✅"
+            
+            # Build summary
+            summary = f"""## {alert_emoji} Summary
+        - **Total Mentions**: {total}
+        - **Platforms**: Reddit ({reddit_count}), Twitter ({twitter_count})  
+        - **Sentiment**: {positive} positive ({pos_pct:.1f}%), {negative} negative ({neg_pct:.1f}%), {neutral} neutral"""
+            
+            # Build top mentions
+            if top_mentions_data:
+                top_mentions = "\n## 🔥 Top Mentions (by engagement)\n"
+                for i, mention in enumerate(top_mentions_data, 1):
+                    platform_emoji = "🔴" if mention['platform'] == 'reddit' else "🐦"
+                    top_mentions += f"\n**{i}. {platform_emoji} {mention['title'][:60]}...**\n"
+                    top_mentions += f"- Author: {mention['author']} | Score: {mention['score']} | Sentiment: {mention['sentiment_label']}\n"
+                    top_mentions += f"- URL: {mention['url']}\n"
+            else:
+                top_mentions = ""
+        
+        # Save outputs for GitHub Actions
+        with open(os.environ['GITHUB_ENV'], 'a') as env_file:
+            env_file.write(f'EMAIL_SUBJECT={subject}\n')
+            env_file.write(f'EMAIL_SUMMARY={summary}\n')
+            env_file.write(f'EMAIL_TOP_MENTIONS={top_mentions}\n')
+        
+        print(f"Generated email: {subject}")
+        EOF
+        
+    - name: Send email notification
+      if: always()  # Send email regardless of sentiment results
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: ${{ env.EMAIL_SUBJECT }}
+        to: ${{ secrets.EMAIL_TO }}
+        from: Ansible Mention Bot <${{ secrets.EMAIL_USERNAME }}>
+        body: |
+          # Ansible Mention Monitoring Report
+          **Date**: ${{ github.event.repository.updated_at }}
+          **Monitoring Period**: Last 24 hours
+          
+          ${{ env.EMAIL_SUMMARY }}
+          
+          ${{ env.EMAIL_TOP_MENTIONS }}
+          
+          ## 📁 Download Full Results
+          [View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          **Available Files:**
+          - `mentions_*.json` - Complete mention data with metadata
+          - `mentions_*.csv` - Spreadsheet format for easy analysis
+          - `mention_bot.log` - Detailed execution logs
+          
+          ---
+          *Automated report from ansible-mention-bot | Run #${{ github.run_number }}*
+        convert_markdown: true
