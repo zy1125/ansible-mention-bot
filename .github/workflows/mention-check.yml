@@ -1,0 +1,128 @@
+name: Ansible Mention Monitor
+
+on:
+  schedule:
+    # Run once daily at 9:00 AM UTC (5:00 AM EST / 2:00 AM PST)
+    - cron: '0 9 * * *'
+  workflow_dispatch:  # Allow manual trigger
+  
+env:
+  PRODUCT_NAME: Ansible
+  KEYWORDS: ansible,ansible automation platform,red hat ansible,ansible tower,awx
+  SUBREDDITS: ansible,devops,sysadmin,automation,homelab,selfhosted,redhat
+  CHECK_INTERVAL_HOURS: 24
+
+jobs:
+  monitor-mentions:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Download NLTK data (for TextBlob)
+      run: |
+        python -c "import nltk; nltk.download('punkt'); nltk.download('brown')"
+        
+    - name: Run mention monitoring
+      env:
+        REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+        REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+        REDDIT_USER_AGENT: ansible-mention-bot/1.0-github-actions
+        TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+      run: |
+        python mention_bot.py --hours 24
+        
+    - name: Upload results as artifact
+      uses: actions/upload-artifact@v3
+      if: always()  # Upload even if monitoring found issues
+      with:
+        name: mention-results-${{ github.run_number }}
+        path: |
+          mentions_*.json
+          mentions_*.csv
+          mention_bot.log
+        retention-days: 30
+        
+    - name: Check for negative sentiment spike
+      env:
+        REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+        REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+        REDDIT_USER_AGENT: ansible-mention-bot/1.0-github-actions
+        TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+      run: |
+        # Run a quick check and create issue if too many negative mentions
+        python -c "
+        import json, glob, os
+        files = glob.glob('mentions_*.json')
+        if files:
+            with open(files[0]) as f:
+                mentions = json.load(f)
+            
+            negative_count = sum(1 for m in mentions if m.get('sentiment_label') == 'negative')
+            total_count = len(mentions)
+            
+            if total_count > 0:
+                negative_pct = (negative_count / total_count) * 100
+                print(f'Negative sentiment: {negative_pct:.1f}% ({negative_count}/{total_count})')
+                
+                # Alert if >40% negative or >10 negative mentions (daily threshold)
+                if negative_pct > 40 or negative_count > 10:
+                    print('🚨 HIGH NEGATIVE SENTIMENT DETECTED!')
+                    exit(1)
+            else:
+                print('No mentions found this cycle.')
+        "
+        
+    - name: Create issue for negative sentiment
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read the latest results
+          const files = fs.readdirSync('.').filter(f => f.startsWith('mentions_') && f.endsWith('.json'));
+          if (files.length === 0) return;
+          
+          const mentions = JSON.parse(fs.readFileSync(files[0], 'utf8'));
+          const negativeMentions = mentions.filter(m => m.sentiment_label === 'negative');
+          
+          let body = `## 🚨 Daily Negative Sentiment Alert\n\n`;
+          body += `Found ${negativeMentions.length} negative mentions out of ${mentions.length} total in the last 24 hours.\n\n`;
+          body += `### Recent Negative Mentions:\n\n`;
+          
+          negativeMentions.slice(0, 5).forEach((mention, i) => {
+            body += `${i + 1}. **${mention.platform}**: ${mention.title.substring(0, 60)}...\n`;
+            body += `   - Author: ${mention.author}\n`;
+            body += `   - Score: ${mention.score}\n`;
+            body += `   - URL: ${mention.url}\n\n`;
+          });
+          
+          body += `\n*Automated daily alert from mention monitoring bot*`;
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Daily Negative Sentiment Alert - ${new Date().toISOString().split('T')[0]}`,
+            body: body,
+            labels: ['alert', 'negative-sentiment']
+          });
