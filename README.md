@@ -1,10 +1,10 @@
 # Ansible Mention Monitoring Bot
 
-A Python bot that monitors Reddit and Twitter for mentions of Ansible and related products, providing sentiment analysis and engagement metrics.
+A Python bot that monitors Reddit, Twitter, and Bluesky for mentions of Ansible and related products, providing sentiment analysis and engagement metrics.
 
 ## Features
 
-- 🔍 **Multi-Platform Monitoring**: Reddit and Twitter
+- 🔍 **Multi-Platform Monitoring**: Reddit, Twitter, and Bluesky
 - 📊 **Sentiment Analysis**: Automatic sentiment scoring using TextBlob
 - 🎯 **Keyword Tracking**: Configurable keywords and subreddits
 - 📈 **Engagement Metrics**: Track upvotes, likes, comments, and shares
@@ -54,6 +54,13 @@ A Python bot that monitors Reddit and Twitter for mentions of Ansible and relate
 3. For additional features, also get API keys and access tokens
 4. Add to `.env` file
 
+### Bluesky API Setup
+
+1. Create a Bluesky account at [bsky.app](https://bsky.app)
+2. Generate an app password in your account settings
+3. Use your handle (username) and app password for authentication
+4. Add to `.env` file
+
 ## Configuration
 
 Edit the `.env` file with your settings:
@@ -66,6 +73,10 @@ REDDIT_USER_AGENT=ansible-mention-bot/1.0
 
 # Twitter API Configuration
 TWITTER_BEARER_TOKEN=your_twitter_bearer_token
+
+# Bluesky API Configuration
+BLUESKY_USERNAME=your_bluesky_username.bsky.social
+BLUESKY_PASSWORD=your_bluesky_app_password
 
 # Monitoring Configuration
 PRODUCT_NAME=Ansible
@@ -97,6 +108,9 @@ python reddit_monitor.py
 
 # Test Twitter monitoring  
 python twitter_monitor.py
+
+# Test Bluesky monitoring
+python bluesky_monitor.py
 ```
 
 ## Output
@@ -116,7 +130,7 @@ Generated: 2025-08-15 10:30:00
 
 📊 SUMMARY:
 Total Mentions: 15
-Platforms: reddit: 8, twitter: 7
+Platforms: reddit: 8, twitter: 5, bluesky: 2
 
 😊 SENTIMENT ANALYSIS:
 Positive: 8 (53.3%)
@@ -128,6 +142,10 @@ Average Sentiment Score: 0.142
 1. 🔴 Ansible automation is game-changing for our infrastructure...
    Author: devops_user | Score: 47 | Sentiment: positive
    URL: https://reddit.com/r/devops/comments/...
+
+2. ☁️ Just discovered Ansible for my homelab setup...
+   Author: bluesky_user | Score: 23 | Sentiment: positive
+   URL: https://bsky.app/profile/user.bsky.social/post/...
 ```
 
 ## Automation
@@ -157,6 +175,8 @@ jobs:
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
           TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          BLUESKY_USERNAME: ${{ secrets.BLUESKY_USERNAME }}
+          BLUESKY_PASSWORD: ${{ secrets.BLUESKY_PASSWORD }}
 ```
 
 ### Cron Job
@@ -170,7 +190,8 @@ jobs:
 
 This project uses the following open-source libraries:
 - **praw**: BSD License
-- **tweepy**: MIT License  
+- **tweepy**: MIT License
+- **atproto**: MIT License
 - **requests**: Apache 2.0
 - **pandas**: BSD 3-Clause
 - **textblob**: MIT License

@@ -15,6 +15,7 @@ import argparse
 
 from reddit_monitor import RedditMonitor
 from twitter_monitor import TwitterMonitor
+from bluesky_monitor import BlueskyMonitor
 
 # Configure logging
 logging.basicConfig(
@@ -42,9 +43,11 @@ class MentionBot:
         # Initialize monitors
         self.reddit_monitor = None
         self.twitter_monitor = None
+        self.bluesky_monitor = None
         
         self._setup_reddit_monitor()
         self._setup_twitter_monitor()
+        self._setup_bluesky_monitor()
         
         logger.info(f"MentionBot initialized for {self.product_name}")
         logger.info(f"Keywords: {self.keywords}")
@@ -92,6 +95,23 @@ class MentionBot:
         else:
             logger.warning("Twitter credentials not found - Twitter monitoring disabled")
 
+    def _setup_bluesky_monitor(self):
+        """Setup Bluesky monitor if credentials are available."""
+        bluesky_username = os.getenv('BLUESKY_USERNAME')
+        bluesky_password = os.getenv('BLUESKY_PASSWORD')
+        
+        if bluesky_username and bluesky_password:
+            try:
+                self.bluesky_monitor = BlueskyMonitor(
+                    username=bluesky_username,
+                    password=bluesky_password
+                )
+                logger.info("Bluesky monitor initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize Bluesky monitor: {e}")
+        else:
+            logger.warning("Bluesky credentials not found - Bluesky monitoring disabled")
+
     def collect_mentions(self, hours_back: int = None) -> List[Dict[str, Any]]:
         """Collect mentions from all available platforms."""
         if hours_back is None:
@@ -126,6 +146,20 @@ class MentionBot:
                 logger.info(f"Found {len(twitter_mentions)} Twitter mentions")
             except Exception as e:
                 logger.error(f"Error collecting Twitter mentions: {e}")
+        
+        # Collect Bluesky mentions
+        if self.bluesky_monitor:
+            logger.info("Collecting Bluesky mentions...")
+            try:
+                bluesky_mentions = self.bluesky_monitor.search_mentions(
+                    keywords=self.keywords,
+                    hours_back=hours_back,
+                    max_results=100
+                )
+                all_mentions.extend(bluesky_mentions)
+                logger.info(f"Found {len(bluesky_mentions)} Bluesky mentions")
+            except Exception as e:
+                logger.error(f"Error collecting Bluesky mentions: {e}")
         
         logger.info(f"Total mentions collected: {len(all_mentions)}")
         return all_mentions
@@ -212,7 +246,7 @@ Average Sentiment Score: {sentiment_summary['average_sentiment']:.3f}
 """
         
         for i, mention in enumerate(top_mentions, 1):
-            platform_emoji = "🔴" if mention['platform'] == 'reddit' else "🐦"
+            platform_emoji = {"reddit": "🔴", "twitter": "🐦", "bluesky": "☁️"}.get(mention['platform'], "📱")
             report += f"\n{i}. {platform_emoji} {mention['title'][:60]}..."
             report += f"\n   Author: {mention['author']} | Score: {mention['score']} | Sentiment: {mention['sentiment_label']}"
             report += f"\n   URL: {mention['url']}\n"
