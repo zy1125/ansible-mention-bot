@@ -190,14 +190,45 @@ jobs:
             else:
                 top_mentions = ""
         
-        # Save outputs for GitHub Actions
+        # Save outputs for GitHub Actions (escape special characters)
+        import urllib.parse
+        
         with open(os.environ['GITHUB_ENV'], 'a') as env_file:
             env_file.write(f'EMAIL_SUBJECT={subject}\n')
-            env_file.write(f'EMAIL_SUMMARY={summary}\n')
-            env_file.write(f'EMAIL_TOP_MENTIONS={top_mentions}\n')
+        
+        # Save complex content to files instead of env vars
+        with open('email_summary.txt', 'w') as f:
+            f.write(summary)
+        
+        with open('email_top_mentions.txt', 'w') as f:
+            f.write(top_mentions)
         
         print(f"Generated email: {subject}")
         EOF
+        
+    - name: Generate email body file
+      if: always()
+      run: |
+        cat > email_body.txt << 'EMAIL_EOF'
+        # Ansible Mention Monitoring Report
+        **Date**: $(date '+%Y-%m-%d %H:%M UTC')
+        **Monitoring Period**: Last 24 hours
+        
+        $(cat email_summary.txt)
+        
+        $(cat email_top_mentions.txt)
+        
+        ## 📁 Download Full Results
+        [View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        
+        **Available Files:**
+        - `mentions_*.json` - Complete mention data with metadata
+        - `mentions_*.csv` - Spreadsheet format for easy analysis
+        - `mention_bot.log` - Detailed execution logs
+        
+        ---
+        *Automated report from ansible-mention-bot | Run #${{ github.run_number }}*
+        EMAIL_EOF
         
     - name: Send email notification
       if: always()  # Send email regardless of sentiment results
@@ -210,23 +241,5 @@ jobs:
         subject: ${{ env.EMAIL_SUBJECT }}
         to: ${{ secrets.EMAIL_TO }}
         from: Ansible Mention Bot <${{ secrets.EMAIL_USERNAME }}>
-        body: |
-          # Ansible Mention Monitoring Report
-          **Date**: ${{ github.event.repository.updated_at }}
-          **Monitoring Period**: Last 24 hours
-          
-          ${{ env.EMAIL_SUMMARY }}
-          
-          ${{ env.EMAIL_TOP_MENTIONS }}
-          
-          ## 📁 Download Full Results
-          [View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          **Available Files:**
-          - `mentions_*.json` - Complete mention data with metadata
-          - `mentions_*.csv` - Spreadsheet format for easy analysis
-          - `mention_bot.log` - Detailed execution logs
-          
-          ---
-          *Automated report from ansible-mention-bot | Run #${{ github.run_number }}*
+        body: file://email_body.txt
         convert_markdown: true
