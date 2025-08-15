@@ -62,6 +62,36 @@ jobs:
           mention_bot.log
         retention-days: 30
         
+    - name: Send email notification
+      if: always()  # Send email regardless of sentiment results
+      uses: dawidd6/action-send-mail@v3
+      env:
+        MENTIONS_DATA: ${{ steps.process-data.outputs.email-content }}
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: 📊 Ansible Daily Report - ${{ github.run_number }}
+        to: ${{ secrets.EMAIL_TO }}
+        from: Ansible Mention Bot <${{ secrets.EMAIL_USERNAME }}>
+        body: |
+          # Ansible Mention Monitoring Report
+          **Date**: $(date '+%Y-%m-%d')
+          **Run**: ${{ github.run_number }}
+          
+          ## 📁 Download Results
+          [View workflow run and download artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          The monitoring has completed successfully. Download the artifacts above to see:
+          - mentions_*.json - Complete mention data
+          - mentions_*.csv - Spreadsheet format  
+          - mention_bot.log - Execution logs
+          
+          ---
+          *Automated report from ansible-mention-bot*
+        convert_markdown: true
+        
     - name: Check for negative sentiment spike
       env:
         REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
