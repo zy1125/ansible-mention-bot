@@ -1,9 +1,9 @@
 name: Ansible Mention Monitor
 
 on:
-  schedule:
-    # Run once daily at 9:00 AM UTC (5:00 AM EST / 2:00 AM PST)
-    - cron: '0 9 * * *'
+  # schedule:
+  #   # Run once daily at 9:00 AM UTC (5:00 AM EST / 2:00 AM PST)
+  #   - cron: '0 9 * * *'
   workflow_dispatch:  # Allow manual trigger
   
 env:
